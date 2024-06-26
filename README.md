@@ -101,3 +101,39 @@ SELECT a.customername,b.orderid
 from public.customers as a
 full join public.orders as b
 on a.customerid = b.customerid
+
+--Window Functions
+--ROW_NUMBER(), RANK() e DENSE_RANK()
+SELECT o.*
+	,b.city
+	,ROW_NUMBER() OVER (ORDER BY o.quantity DESC) AS ROWNUM
+	,RANK() OVER (ORDER BY o.quantity DESC) AS RANKING
+	,DENSE_RANK() OVER (ORDER BY o.quantity DESC) AS DENSE_R
+	FROM public.order_details as o	
+LEFT JOIN orders as a on o.orderid = a.orderid
+LEFT JOIN customers as b on	a.customerid = b.customerid
+
+--SUM() e AVG()
+SELECT 
+	productid
+	,orderdetailid
+	,SUM(quantity) OVER (ORDER BY productid) as soma
+	,AVG(quantity) OVER (ORDER BY productid) as media
+FROM public.order_details
+
+--LEAD() e LAG()
+SELECT
+	o.*
+	,a.quantity
+	,LEAD(a.quantity,1) OVER (order by a.quantity) as ProximaQtd
+	,LAG(a.quantity,1) over (order by a.quantity) as QtdeAnterior
+FROM public.orders o
+LEFT JOIN public.order_details as a on o.orderid = a.orderid
+
+-- Aplicação Prática em Ciência de Dados: Média Móvel de 7 Dias
+SELECT
+	o.*
+	,a.quantity
+	,avg(a.quantity) OVER (order by o.orderdate ROWS between 6 PRECEDING and current row) as MediaSeteDias
+FROM public.orders o
+LEFT JOIN public.order_details as a on o.orderid = a.orderid
