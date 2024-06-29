@@ -1,139 +1,235 @@
-# Primeiros comandos sql
+# Relatórios Avançados em SQL Northwind
 
-SELECT * FROM customers LIMIT 10
+## Objetivo
 
-SELECT customername,country FROM customers WHERE country = 'UK'
-ORDER BY customername DESC
+Este repositório tem como objetivo apresentar relatórios avançados construídos em SQL. As análises disponibilizadas aqui podem ser aplicadas em empresas de todos os tamanhos que desejam se tornar mais analíticas. Através destes relatórios, organizações poderão extrair insights valiosos de seus dados, ajudando na tomada de decisões estratégicas.
 
-SELECT COUNT(customers.customerid), country FROM customers
-WHERE country = 'USA'
-GROUP BY country
+## Relatórios que vamos criar
 
---desafio 1
+1. **Relatórios de Receita**
+    
+    * Qual foi o total de receitas no ano de 1997?
 
---1. Como você seleciona todas as colunas da tabela Customers?
-SELECT * FROM customers
+    ```sql
+    CREATE VIEW total_revenues_1997_view AS
+    SELECT SUM((order_details.unit_price) * order_details.quantity * (1.0 - order_details.discount)) AS total_revenues_1997
+    FROM order_details
+    INNER JOIN (
+        SELECT order_id 
+        FROM orders 
+        WHERE EXTRACT(YEAR FROM order_date) = '1997'
+    ) AS ord 
+    ON ord.order_id = order_details.order_id;
+    ```
 
---2. Como mostrar apenas o CustomerName e City da tabela Customers?
-SELECT customers.customername, customers.city FROM customers
+    * Faça uma análise de crescimento mensal e o cálculo de YTD
 
---3. Como encontrar clientes na tabela Customers que estão localizados no país Germany?
-SELECT customers.customername, customers.country FROM customers WHERE customers.country = 'Germany'
+    ```sql
+    CREATE VIEW view_receitas_acumuladas AS
+    WITH ReceitasMensais AS (
+        SELECT
+            EXTRACT(YEAR FROM orders.order_date) AS Ano,
+            EXTRACT(MONTH FROM orders.order_date) AS Mes,
+            SUM(order_details.unit_price * order_details.quantity * (1.0 - order_details.discount)) AS Receita_Mensal
+        FROM
+            orders
+        INNER JOIN
+            order_details ON orders.order_id = order_details.order_id
+        GROUP BY
+            EXTRACT(YEAR FROM orders.order_date),
+            EXTRACT(MONTH FROM orders.order_date)
+    ),
+    ReceitasAcumuladas AS (
+        SELECT
+            Ano,
+            Mes,
+            Receita_Mensal,
+            SUM(Receita_Mensal) OVER (PARTITION BY Ano ORDER BY Mes) AS Receita_YTD
+        FROM
+            ReceitasMensais
+    )
+    SELECT
+        Ano,
+        Mes,
+        Receita_Mensal,
+        Receita_Mensal - LAG(Receita_Mensal) OVER (PARTITION BY Ano ORDER BY Mes) AS Diferenca_Mensal,
+        Receita_YTD,
+        (Receita_Mensal - LAG(Receita_Mensal) OVER (PARTITION BY Ano ORDER BY Mes)) / LAG(Receita_Mensal) OVER (PARTITION BY Ano ORDER BY Mes) * 100 AS Percentual_Mudanca_Mensal
+    FROM
+        ReceitasAcumuladas
+    ORDER BY
+        Ano, Mes;
+    ```
 
---4. Como listar clientes da tabela Customers com CustomerID menor ou igual a 5?
-SELECT customers.customerid, customers.customername FROM customers WHERE customerid <= 5
+2. **Segmentação de clientes**
+    
+    * Qual é o valor total que cada cliente já pagou até agora?
 
---5. Como selecionar clientes da Germany que também estão na cidade de Berlin?
-SELECT country, city, country FROM customers
-WHERE country = 'Germany' and city = 'Berlin'
+    ```sql
+    CREATE VIEW view_total_revenues_per_customer AS
+    SELECT 
+        customers.company_name, 
+        SUM(order_details.unit_price * order_details.quantity * (1.0 - order_details.discount)) AS total
+    FROM 
+        customers
+    INNER JOIN 
+        orders ON customers.customer_id = orders.customer_id
+    INNER JOIN 
+        order_details ON order_details.order_id = orders.order_id
+    GROUP BY 
+        customers.company_name
+    ORDER BY 
+        total DESC;
+    ```
 
---6. Quais são os títulos de contato únicos dos clientes da Germany?
-SELECT DISTINCT(customers.postalcode), customers.country FROM customers
- WHERE customers.country = 'Germany'
+    * Separe os clientes em 5 grupos de acordo com o valor pago por cliente
 
---7. Retorne apenas os primeiros 5 registros da tabela Customers.
-SELECT * FROM customers LIMIT 5
+    ```sql
+    CREATE VIEW view_total_revenues_per_customer_group AS
+    SELECT 
+    customers.company_name, 
+    SUM(order_details.unit_price * order_details.quantity * (1.0 - order_details.discount)) AS total,
+    NTILE(5) OVER (ORDER BY SUM(order_details.unit_price * order_details.quantity * (1.0 - order_details.discount)) DESC) AS group_number
+    FROM 
+        customers
+    INNER JOIN 
+        orders ON customers.customer_id = orders.customer_id
+    INNER JOIN 
+        order_details ON order_details.order_id = orders.order_id
+    GROUP BY 
+        customers.company_name
+    ORDER BY 
+        total DESC;
+    ```
 
--- agrupamento
 
-SELECT country, count(*) FROM customers GROUP by country
+    * Agora somente os clientes que estão nos grupos 3, 4 e 5 para que seja feita uma análise de Marketing especial com eles
 
-SELECT country, count(*) FROM customers GROUP by country HAVING count(*) >= 5
+    ```sql
+    CREATE VIEW clients_to_marketing AS
+    WITH clientes_para_marketing AS (
+        SELECT 
+        customers.company_name, 
+        SUM(order_details.unit_price * order_details.quantity * (1.0 - order_details.discount)) AS total,
+        NTILE(5) OVER (ORDER BY SUM(order_details.unit_price * order_details.quantity * (1.0 - order_details.discount)) DESC) AS group_number
+    FROM 
+        customers
+    INNER JOIN 
+        orders ON customers.customer_id = orders.customer_id
+    INNER JOIN 
+        order_details ON order_details.order_id = orders.order_id
+    GROUP BY 
+        customers.company_name
+    ORDER BY 
+        total DESC
+    )
 
---desafio 2
---1. Selecione todos os clientes que estão localizados em “Rio de Janeiro” ou “São Paulo”.
-SELECT customers.customername, customers.city
-FROM customers WHERE customers.city LIKE '%Paulo' OR customers.city = 'Rio de Janeiro'
+    SELECT *
+    FROM clientes_para_marketing
+    WHERE group_number >= 3;
+    ```
 
---2. Selecione o nome do cliente, o nome do contato e a cidade para todos os clientes que não estão no Brasil.
-select customers.customername, customers.contactname from customers where customers.country <> 'Brazil'
+3. **Top 10 Produtos Mais Vendidos**
+    
+    * Identificar os 10 produtos mais vendidos.
 
---3. Liste os países com pelo menos um cliente e ordene alfabeticamente.
-select count(customers.country), customers.country from customers
-group by customers.country HAVING count(customers.country) >= 1
-order by customers.country ASC
-	
---4. Selecione o nome do cliente e a cidade para todos os clientes cujo nome do contato é “John Doe”.
-select customername, city , contactname from customers where contactname like 'J%' -- não tem John Doe
+    ```sql
+    CREATE VIEW top_10_products AS
+    SELECT products.product_name, SUM(order_details.unit_price * order_details.quantity * (1.0 - order_details.discount)) AS sales
+    FROM products
+    INNER JOIN order_details ON order_details.product_id = products.product_id
+    GROUP BY products.product_name
+    ORDER BY sales DESC;
+    ```
 
---Desafios LIKE, HAVING, GROUP BY
---Questionário 3
+4. **Clientes do Reino Unido que Pagaram Mais de 1000 Dólares**
+    
+    * Quais clientes do Reino Unido pagaram mais de 1000 dólares?
 
---1. Quais países têm mais de 5 clientes e quantos clientes eles têm?
-SELECT COUNT(DISTINCT(customerid)), country FROM customers
-group by country  HAVING COUNT(DISTINCT(customerid)) > 5
+    ```sql
+    CREATE VIEW uk_clients_who_pay_more_then_1000 AS
+    SELECT customers.contact_name, SUM(order_details.unit_price * order_details.quantity * (1.0 - order_details.discount) * 100) / 100 AS payments
+    FROM customers
+    INNER JOIN orders ON orders.customer_id = customers.customer_id
+    INNER JOIN order_details ON order_details.order_id = orders.order_id
+    WHERE LOWER(customers.country) = 'uk'
+    GROUP BY customers.contact_name
+    HAVING SUM(order_details.unit_price * order_details.quantity * (1.0 - order_details.discount)) > 1000;
+    ```
 
---2. Conte quantos clientes existem em cada país.
-SELECT COUNT(DISTINCT(customers.customerid)),country from customers group by country
+## Contexto
 
---3. Selecione todos os clientes que têm “A” no início do nome do cliente ou “B” no início do nome do contato.
-SELECT customers.customername, contactname from customers
-where customername like 'A%' or contactname like 'B%'
+O banco de dados `Northwind` contém os dados de vendas de uma empresa  chamada `Northwind Traders`, que importa e exporta alimentos especiais de todo o mundo. 
 
---4. Liste o número de clientes em cada cidade que tenha mais de 2 clientes.
-select city, COUNT(DISTINCT(customers.customerid)) from customers
-group by city HAVING COUNT(DISTINCT(customers.customerid)) > 2
+O banco de dados Northwind é ERP com dados de clientes, pedidos, inventário, compras, fornecedores, remessas, funcionários e contabilidade.
 
---5. Selecione todos os clientes que estão localizados em “Brazil” e cujo código postal não está vazio.
-SELECT customers.customername, country from customers
-where country = 'Brazil' and customers.postalcode is not null
+O conjunto de dados Northwind inclui dados de amostra para o seguinte:
 
---Desafio Joins
---Tabelas utilizadas: Customers, Orders e Employees.
---1. Como você consultaria o nome do cliente (CustomerName) e o nome do funcionário (FirstName, LastName) para cada pedido?
-SELECT a.*,b.contactname,c.firstname,c.lastname from orders as a
-left join customers as b on a.customerid = b.customerid
-left join employees as c on a.employeeid = c.employeeid
+* **Fornecedores:** Fornecedores e vendedores da Northwind
+* **Clientes:** Clientes que compram produtos da Northwind
+* **Funcionários:** Detalhes dos funcionários da Northwind Traders
+* **Produtos:** Informações do produto
+* **Transportadoras:** Os detalhes dos transportadores que enviam os produtos dos comerciantes para os clientes finais
+* **Pedidos e Detalhes do Pedido:** Transações de pedidos de vendas ocorrendo entre os clientes e a empresa
 
---2. Como você encontraria todos os pedidos feitos por clientes de um determinado país, por exemplo, “Brasil”?
-select a.*, b.country from orders as a
-left join customers as b on a.customerid = b.customerid
-where b.country = 'Brazil'
+O banco de dados `Northwind` inclui 14 tabelas e os relacionamentos entre as tabelas são mostrados no seguinte diagrama de relacionamento de entidades.
 
---3. Como você listaria todos os clientes e os pedidos associados a eles, incluindo clientes que não
---		fizeram nenhum pedido?
-select a.*, b.orderid from customers as a
-left join orders as b on a.customerid=b.customerid
-	
---5. Como você listaria todos os clientes e todos os pedidos, mostrando as correspondências onde
---		existem e os registros sem correspondência de ambas as tabelas?
-SELECT a.customername,b.orderid
-from public.customers as a
-full join public.orders as b
-on a.customerid = b.customerid
+![northwind](https://github.com/lvgalvao/Northwind-SQL-Analytics/blob/main/pics/northwind-er-diagram.png?raw=true)
 
---Window Functions
---ROW_NUMBER(), RANK() e DENSE_RANK()
-SELECT o.*
-	,b.city
-	,ROW_NUMBER() OVER (ORDER BY o.quantity DESC) AS ROWNUM
-	,RANK() OVER (ORDER BY o.quantity DESC) AS RANKING
-	,DENSE_RANK() OVER (ORDER BY o.quantity DESC) AS DENSE_R
-	FROM public.order_details as o	
-LEFT JOIN orders as a on o.orderid = a.orderid
-LEFT JOIN customers as b on	a.customerid = b.customerid
+## Objetivo
 
---SUM() e AVG()
-SELECT 
-	productid
-	,orderdetailid
-	,SUM(quantity) OVER (ORDER BY productid) as soma
-	,AVG(quantity) OVER (ORDER BY productid) as media
-FROM public.order_details
+O objetivo desse 
 
---LEAD() e LAG()
-SELECT
-	o.*
-	,a.quantity
-	,LEAD(a.quantity,1) OVER (order by a.quantity) as ProximaQtd
-	,LAG(a.quantity,1) over (order by a.quantity) as QtdeAnterior
-FROM public.orders o
-LEFT JOIN public.order_details as a on o.orderid = a.orderid
+## Configuração Inicial
 
--- Aplicação Prática em Ciência de Dados: Média Móvel de 7 Dias
-SELECT
-	o.*
-	,a.quantity
-	,avg(a.quantity) OVER (order by o.orderdate ROWS between 6 PRECEDING and current row) as MediaSeteDias
-FROM public.orders o
-LEFT JOIN public.order_details as a on o.orderid = a.orderid
+### Manualmente
+
+Utilize o arquivo SQL fornecido, `nortwhind.sql`, para popular o seu banco de dados.
+
+### Com Docker e Docker Compose
+
+**Pré-requisito**: Instale o Docker e Docker Compose
+
+* [Começar com Docker](https://www.docker.com/get-started)
+* [Instalar Docker Compose](https://docs.docker.com/compose/install/)
+
+### Passos para configuração com Docker:
+
+1. **Iniciar o Docker Compose** Execute o comando abaixo para subir os serviços:
+    
+    ```
+    docker-compose up
+    ```
+    
+    Aguarde as mensagens de configuração, como:
+    
+    ```csharp
+    Creating network "northwind_psql_db" with driver "bridge"
+    Creating volume "northwind_psql_db" with default driver
+    Creating volume "northwind_psql_pgadmin" with default driver
+    Creating pgadmin ... done
+    Creating db      ... done
+    ```
+       
+2. **Conectar o PgAdmin** Acesse o PgAdmin pelo URL: [http://localhost:5050](http://localhost:5050), com a senha `postgres`. 
+
+Configure um novo servidor no PgAdmin:
+    
+    * **Aba General**:
+        * Nome: db
+    * **Aba Connection**:
+        * Nome do host: db
+        * Nome de usuário: postgres
+        * Senha: postgres Em seguida, selecione o banco de dados "northwind".
+
+3. **Parar o Docker Compose** Pare o servidor iniciado pelo comando `docker-compose up` usando Ctrl-C e remova os contêineres com:
+    
+    ```
+    docker-compose down
+    ```
+    
+4. **Arquivos e Persistência** Suas modificações nos bancos de dados Postgres serão persistidas no volume Docker `postgresql_data` e podem ser recuperadas reiniciando o Docker Compose com `docker-compose up`. Para deletar os dados do banco, execute:
+    
+    ```
+    docker-compose down -v
+    ```

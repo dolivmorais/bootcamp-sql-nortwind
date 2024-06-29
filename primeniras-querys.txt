@@ -1,0 +1,277 @@
+# Primeiros comandos sql
+
+SELECT * FROM customers LIMIT 10
+
+SELECT customername,country FROM customers WHERE country = 'UK'
+ORDER BY customername DESC
+
+SELECT COUNT(customers.customerid), country FROM customers
+WHERE country = 'USA'
+GROUP BY country
+
+--desafio 1
+
+--1. Como você seleciona todas as colunas da tabela Customers?
+SELECT * FROM customers
+
+--2. Como mostrar apenas o CustomerName e City da tabela Customers?
+SELECT customers.customername, customers.city FROM customers
+
+--3. Como encontrar clientes na tabela Customers que estão localizados no país Germany?
+SELECT customers.customername, customers.country FROM customers WHERE customers.country = 'Germany'
+
+--4. Como listar clientes da tabela Customers com CustomerID menor ou igual a 5?
+SELECT customers.customerid, customers.customername FROM customers WHERE customerid <= 5
+
+--5. Como selecionar clientes da Germany que também estão na cidade de Berlin?
+SELECT country, city, country FROM customers
+WHERE country = 'Germany' and city = 'Berlin'
+
+--6. Quais são os títulos de contato únicos dos clientes da Germany?
+SELECT DISTINCT(customers.postalcode), customers.country FROM customers
+ WHERE customers.country = 'Germany'
+
+--7. Retorne apenas os primeiros 5 registros da tabela Customers.
+SELECT * FROM customers LIMIT 5
+
+-- agrupamento
+
+SELECT country, count(*) FROM customers GROUP by country
+
+SELECT country, count(*) FROM customers GROUP by country HAVING count(*) >= 5
+
+--desafio 2
+--1. Selecione todos os clientes que estão localizados em “Rio de Janeiro” ou “São Paulo”.
+SELECT customers.customername, customers.city
+FROM customers WHERE customers.city LIKE '%Paulo' OR customers.city = 'Rio de Janeiro'
+
+--2. Selecione o nome do cliente, o nome do contato e a cidade para todos os clientes que não estão no Brasil.
+select customers.customername, customers.contactname from customers where customers.country <> 'Brazil'
+
+--3. Liste os países com pelo menos um cliente e ordene alfabeticamente.
+select count(customers.country), customers.country from customers
+group by customers.country HAVING count(customers.country) >= 1
+order by customers.country ASC
+	
+--4. Selecione o nome do cliente e a cidade para todos os clientes cujo nome do contato é “John Doe”.
+select customername, city , contactname from customers where contactname like 'J%' -- não tem John Doe
+
+--Desafios LIKE, HAVING, GROUP BY
+--Questionário 3
+
+--1. Quais países têm mais de 5 clientes e quantos clientes eles têm?
+SELECT COUNT(DISTINCT(customerid)), country FROM customers
+group by country  HAVING COUNT(DISTINCT(customerid)) > 5
+
+--2. Conte quantos clientes existem em cada país.
+SELECT COUNT(DISTINCT(customers.customerid)),country from customers group by country
+
+--3. Selecione todos os clientes que têm “A” no início do nome do cliente ou “B” no início do nome do contato.
+SELECT customers.customername, contactname from customers
+where customername like 'A%' or contactname like 'B%'
+
+--4. Liste o número de clientes em cada cidade que tenha mais de 2 clientes.
+select city, COUNT(DISTINCT(customers.customerid)) from customers
+group by city HAVING COUNT(DISTINCT(customers.customerid)) > 2
+
+--5. Selecione todos os clientes que estão localizados em “Brazil” e cujo código postal não está vazio.
+SELECT customers.customername, country from customers
+where country = 'Brazil' and customers.postalcode is not null
+
+--Desafio Joins
+--Tabelas utilizadas: Customers, Orders e Employees.
+--1. Como você consultaria o nome do cliente (CustomerName) e o nome do funcionário (FirstName, LastName) para cada pedido?
+SELECT a.*,b.contactname,c.firstname,c.lastname from orders as a
+left join customers as b on a.customerid = b.customerid
+left join employees as c on a.employeeid = c.employeeid
+
+--2. Como você encontraria todos os pedidos feitos por clientes de um determinado país, por exemplo, “Brasil”?
+select a.*, b.country from orders as a
+left join customers as b on a.customerid = b.customerid
+where b.country = 'Brazil'
+
+--3. Como você listaria todos os clientes e os pedidos associados a eles, incluindo clientes que não
+--		fizeram nenhum pedido?
+select a.*, b.orderid from customers as a
+left join orders as b on a.customerid=b.customerid
+	
+--5. Como você listaria todos os clientes e todos os pedidos, mostrando as correspondências onde
+--		existem e os registros sem correspondência de ambas as tabelas?
+SELECT a.customername,b.orderid
+from public.customers as a
+full join public.orders as b
+on a.customerid = b.customerid
+
+--Window Functions
+--ROW_NUMBER(), RANK() e DENSE_RANK()
+SELECT o.*
+	,b.city
+	,ROW_NUMBER() OVER (ORDER BY o.quantity DESC) AS ROWNUM
+	,RANK() OVER (ORDER BY o.quantity DESC) AS RANKING
+	,DENSE_RANK() OVER (ORDER BY o.quantity DESC) AS DENSE_R
+	FROM public.order_details as o	
+LEFT JOIN orders as a on o.orderid = a.orderid
+LEFT JOIN customers as b on	a.customerid = b.customerid
+
+--SUM() e AVG()
+SELECT 
+	productid
+	,orderdetailid
+	,SUM(quantity) OVER (ORDER BY productid) as soma
+	,AVG(quantity) OVER (ORDER BY productid) as media
+FROM public.order_details
+
+--LEAD() e LAG()
+SELECT
+	o.*
+	,a.quantity
+	,LEAD(a.quantity,1) OVER (order by a.quantity) as ProximaQtd
+	,LAG(a.quantity,1) over (order by a.quantity) as QtdeAnterior
+FROM public.orders o
+LEFT JOIN public.order_details as a on o.orderid = a.orderid
+
+-- Aplicação Prática em Ciência de Dados: Média Móvel de 7 Dias
+SELECT
+	o.*
+	,a.quantity
+	,avg(a.quantity) OVER (order by o.orderdate ROWS between 6 PRECEDING and current row) as MediaSeteDias
+FROM public.orders o
+LEFT JOIN public.order_details as a on o.orderid = a.orderid
+
+--Qual foi o total de receitas no ano de 1997?
+--POSTGRES
+EXPLAIN ANALYZE
+SELECT
+sum((o.unit_price * o.quantity) * (1 - o.discount)) as total
+from public.order_details o
+join public.orders os on o.order_id = os.order_id
+where EXTRACT(YEAR from os.order_date ) = 1997
+
+-- melhor performace
+EXPLAIN ANALYZE
+SELECT
+sum((o.unit_price * o.quantity) * (1 - o.discount)) as total
+from public.order_details o
+join(select order_id from orders where EXTRACT(YEAR from order_date ) = 1997) os
+	on  o.order_id = os.order_id
+
+--SQL SERVER
+-- Habilitar o plano de execução de consulta (não necessário para a execução regular)
+SET STATISTICS PROFILE ON;
+
+SELECT
+    SUM((o.unit_price * o.quantity) * (1 - o.discount)) AS total
+FROM
+    order_details o
+JOIN (
+    SELECT order_id
+    FROM orders
+    WHERE YEAR(order_date) = 1997
+) os
+    ON o.order_id = os.order_id;
+
+-- Desabilitar o plano de execução de consulta (não necessário para a execução regular)
+SET STATISTICS PROFILE OFF;
+
+--Consulta Convertida com CTE (SQL Server)
+WITH Orders1997 AS (
+    SELECT order_id
+    FROM orders
+    WHERE YEAR(order_date) = 1997
+)
+SELECT
+    SUM((o.unit_price * o.quantity) * (1 - o.discount)) AS total
+FROM
+    order_details o
+JOIN Orders1997 os
+    ON o.order_id = os.order_id
+
+
+--Faça uma análise de crescimento mensal e o cálculo de YTD (CET)
+
+WITH receitas AS (
+    SELECT 
+        EXTRACT(MONTH FROM os.order_date) AS mes,
+        EXTRACT(YEAR FROM os.order_date) AS ano,
+        SUM((o.unit_price * o.quantity) * (1 - o.discount)) AS total
+    FROM public.order_details o
+    JOIN public.orders os ON o.order_id = os.order_id
+    GROUP BY 2, 1
+),
+receitasYTD AS (
+    SELECT 
+        mes,
+        ano,
+        total,
+        SUM(total) OVER (PARTITION BY ano ORDER BY mes) AS totalYTD
+    FROM receitas
+)
+
+SELECT 
+    mes,
+    ano,
+    total,
+    totalYTD,
+    LAG(totalYTD, 1) OVER (PARTITION BY ano ORDER BY mes) AS totalYTD_previous_month,
+	total - LAG(total, 1) OVER (PARTITION BY ano ORDER BY mes) AS diferenca_mensal,
+	(total - LAG(total, 1) OVER (PARTITION BY ano ORDER BY mes)) / total AS diferenca_mensal_percent
+FROM receitasYTD
+ORDER BY ano, mes;
+
+--Qual é o valor total que cada cliente já pagou até agora?
+SELECT
+	customers.company_name,
+	sum(order_details.unit_price * order_details.quantity * (1 - order_details.discount)) as total
+from customers
+join orders on  customers.customer_id = orders.customer_id
+join order_details on order_details.order_id = orders.order_id
+group by customers.company_name
+order by total desc
+
+--Separe os clientes em 5 grupos de acordo com o valor pago por cliente
+SELECT
+	customers.company_name,
+	sum(order_details.unit_price * order_details.quantity * (1 - order_details.discount)) as total,
+	NTILE(5) over (order by sum(order_details.unit_price * order_details.quantity * (1 - order_details.discount)))
+from customers
+JOIN orders on customers.customer_id = orders.customer_id
+JOIN order_details on order_details.order_id = orders.order_id
+group by customers.company_name
+order by total desc 
+
+--Agora somente os clientes que estão nos grupos 3, 4 e 5 para que seja feita uma análise de Marketing especial com eles
+WITH clientes as(
+SELECT
+	customers.company_name,
+	sum(order_details.unit_price * order_details.quantity * (1 - order_details.discount)) as total,
+	NTILE(5) over (order by sum(order_details.unit_price * order_details.quantity * (1 - order_details.discount))) as grupo
+from customers
+JOIN orders on customers.customer_id = orders.customer_id
+JOIN order_details on order_details.order_id = orders.order_id
+group by customers.company_name
+order by total desc )
+select * from clientes where grupo in (3,4,5)
+
+
+--Identificar os 10 produtos mais vendidos.
+select 
+	product_name,
+	sum(order_details.unit_price * order_details.quantity * (1 - order_details.discount)) as total
+from products
+join order_details on order_details.product_id = products.product_id
+group by product_name
+order by total desc
+limit 10
+
+
+--Quais clientes do Reino Unido pagaram mais de 1000 dólares?
+select 
+	contact_name,
+	sum(order_details.unit_price * order_details.quantity * (1 - order_details.discount)) as total
+from customers
+join orders on orders.customer_id = customers.customer_id
+join order_details on order_details.order_id = orders.order_id
+where lower(customers.country) = 'uk'
+group by contact_name
+having sum(order_details.unit_price * order_details.quantity * (1 - order_details.discount)) > 1000
+order by total desc
